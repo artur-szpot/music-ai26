@@ -32,7 +32,9 @@ describe('file-backed tag management', () => {
   };
 
   beforeEach(() => {
-    root = fs.mkdtempSync(path.join(os.tmpdir(), 'tag-merge-'));
+    root = fs.realpathSync(
+      fs.mkdtempSync(path.join(os.tmpdir(), 'tag-merge-')),
+    );
     database = new DatabaseSync(':memory:');
     const connection = database as unknown as Parameters<
       typeof createMusicCatalog
