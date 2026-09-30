@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { setImmediate } from 'node:timers';
 import { createMusicCatalog } from './musicCatalog';
-import { readMusicTags } from './musicTags';
+import { readMusicTags, writeMusicTags } from './musicTags';
 
 export type ScanResult = {
   addedOrUpdated: number;
@@ -19,6 +19,8 @@ export async function scanMusicRoot(
   catalog: ReturnType<typeof createMusicCatalog>,
   rootPath: string,
   signal?: AbortSignal,
+  rereadTags = false,
+  writeTags: typeof writeMusicTags = writeMusicTags,
 ): Promise<ScanResult> {
   const root = await fs.realpath(rootPath);
   if (!(await fs.stat(root)).isDirectory()) {
@@ -69,8 +71,9 @@ export async function scanMusicRoot(
               throw new Error('Audio file is outside its source root.');
             }
             seen.add(resolved);
-            const stats = await fs.stat(filePath);
+            let stats = await fs.stat(filePath);
             if (
+              !rereadTags &&
               !catalog.needsScan(sourceId, resolved, stats.size, stats.mtimeMs)
             ) {
               result.unchanged += 1;
@@ -79,7 +82,17 @@ export async function scanMusicRoot(
             await new Promise<void>((resolve) => {
               setImmediate(resolve);
             });
-            const tags = readMusicTags(resolved);
+            let tags = readMusicTags(resolved);
+            const normalizedArtists = catalog.resolveArtistNames(tags.artists);
+            if (
+              normalizedArtists.length !== tags.artists.length ||
+              normalizedArtists.some(
+                (name, index) => name !== tags.artists[index],
+              )
+            ) {
+              tags = writeTags(resolved, { artists: normalizedArtists });
+              stats = await fs.stat(filePath);
+            }
             catalog.upsertTrack({
               sourceId,
               filePath: resolved,

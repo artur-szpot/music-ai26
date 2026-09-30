@@ -9,12 +9,17 @@ import {
 import { scanMusicRoot } from '../main/musicScanner';
 import { readMusicTags } from '../main/musicTags';
 
-jest.mock('../main/musicTags', () => ({ readMusicTags: jest.fn() }));
+jest.mock('../main/musicTags', () => ({
+  readMusicTags: jest.fn(),
+  writeMusicTags: jest.fn(),
+}));
 
 describe('music folder scanning', () => {
   let database: DatabaseSync;
   let root: string;
   const readTags = readMusicTags as jest.Mock;
+  const writeTags = jest.requireMock('../main/musicTags')
+    .writeMusicTags as jest.Mock;
 
   beforeEach(() => {
     root = fs.mkdtempSync(path.join(os.tmpdir(), 'music-scan-'));
@@ -35,7 +40,9 @@ describe('music folder scanning', () => {
       year: 2024,
       track: 1,
       durationMs: 1000,
+      rating: 7,
     });
+    writeTags.mockReset();
   });
 
   afterEach(() => {
@@ -87,5 +94,106 @@ describe('music folder scanning', () => {
     expect(catalog.search('Sample').rows).toMatchObject([
       { status: 'present' },
     ]);
+  });
+
+  it('rereads title, artists and rating on an explicit rescan of unchanged files', async () => {
+    const catalog = createMusicCatalog(
+      database as unknown as Parameters<typeof createMusicCatalog>[0],
+    );
+    fs.writeFileSync(path.join(root, 'song.mp3'), 'test audio');
+    await scanMusicRoot(catalog, root);
+    const { id } = catalog.search('Sample').rows[0];
+    expect(catalog.detail(id)).toMatchObject({
+      title: 'Sample',
+      artists: ['Artist'],
+      rating: 7,
+    });
+    readTags.mockReturnValue({
+      ...readTags.mock.results[0].value,
+      title: 'New title',
+      artists: ['New artist', 'Second artist'],
+      rating: 10,
+    });
+    expect(await scanMusicRoot(catalog, root, undefined, true)).toMatchObject({
+      addedOrUpdated: 1,
+      unchanged: 0,
+      failed: 0,
+    });
+    expect(catalog.detail(id)).toMatchObject({
+      title: 'New title',
+      artists: ['New artist', 'Second artist'],
+      rating: 10,
+    });
+  });
+
+  it('rewrites an imported artist variant before indexing the track', async () => {
+    const catalog = createMusicCatalog(
+      database as unknown as Parameters<typeof createMusicCatalog>[0],
+    );
+    const canonical = catalog.addTag('artist', 'Correct Artist');
+    catalog.setArtistAlias('Incorrect Artist', canonical.id);
+    const song = path.join(root, 'new-song.mp3');
+    fs.writeFileSync(song, 'test audio');
+    readTags.mockReturnValue({
+      title: 'Sample',
+      artists: ['Incorrect Artist'],
+      album: 'Album',
+      genres: ['Dance'],
+      year: 2024,
+      track: 1,
+      durationMs: 1000,
+      rating: 7,
+    });
+    writeTags.mockImplementation((_filePath, changes) => ({
+      ...readTags.mock.results[readTags.mock.results.length - 1].value,
+      ...changes,
+    }));
+
+    expect(
+      await scanMusicRoot(catalog, root, undefined, true, writeTags),
+    ).toMatchObject({ addedOrUpdated: 1, failed: 0 });
+    expect(writeTags).toHaveBeenCalledWith(song, {
+      artists: ['Correct Artist'],
+    });
+    const trackId = catalog.search('Sample').rows[0].id;
+    expect(catalog.detail(trackId)?.artists).toEqual(['Correct Artist']);
+    expect(catalog.detail(trackId)?.path).toBe(song);
+  });
+
+  it('reports alias tag-write failures and does not index an uncorrected file', async () => {
+    const catalog = createMusicCatalog(
+      database as unknown as Parameters<typeof createMusicCatalog>[0],
+    );
+    const canonical = catalog.addTag('artist', 'Correct Artist');
+    catalog.setArtistAlias('Incorrect Artist', canonical.id);
+    const song = path.join(root, 'locked-song.mp3');
+    fs.writeFileSync(song, 'test audio');
+    readTags.mockReturnValue({
+      title: 'Locked sample',
+      artists: ['Incorrect Artist'],
+      album: 'Album',
+      genres: ['Dance'],
+      year: 2024,
+      track: 1,
+      durationMs: 1000,
+      rating: 7,
+    });
+    writeTags.mockImplementation(() => {
+      throw new Error('The audio file cannot be written.');
+    });
+
+    expect(
+      await scanMusicRoot(catalog, root, undefined, true, writeTags),
+    ).toMatchObject({
+      addedOrUpdated: 0,
+      failed: 1,
+      errors: [
+        {
+          fileName: 'locked-song.mp3',
+          message: 'The audio file cannot be written.',
+        },
+      ],
+    });
+    expect(catalog.search('Locked sample').total).toBe(0);
   });
 });

@@ -18,6 +18,7 @@ CREATE TABLE tracks (
   duration_ms REAL NOT NULL,
   year INTEGER NOT NULL DEFAULT 0,
   track_number INTEGER NOT NULL DEFAULT 0,
+  rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 0 AND 10),
   status TEXT NOT NULL DEFAULT 'present' CHECK (status IN ('present', 'missing')),
   last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -30,6 +31,14 @@ CREATE TABLE artists (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL COLLATE NOCASE UNIQUE CHECK (length(trim(name)) > 0)
 );
+
+CREATE TABLE artist_aliases (
+  variant_name TEXT NOT NULL COLLATE NOCASE PRIMARY KEY
+    CHECK (length(trim(variant_name)) > 0),
+  artist_id INTEGER NOT NULL REFERENCES artists(id) ON DELETE CASCADE
+);
+
+CREATE INDEX artist_aliases_artist ON artist_aliases(artist_id);
 
 CREATE TABLE track_artists (
   track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
@@ -54,5 +63,5 @@ CREATE TABLE track_genres (
 
 CREATE INDEX track_genres_genre ON track_genres(genre_id);
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 3;
 COMMIT;
