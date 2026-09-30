@@ -2,6 +2,8 @@
 
 Music Collection is a local Electron app for browsing, searching and editing MP3, FLAC and M4A files in place. Add a music folder with the native picker, wait for its first scan, then select a track to edit embedded title, artists, album, genres, year or track number. Rescan to find new files or mark missing files; indexed records remain available when files are missing. Folder scans can be cancelled. Search covers title, artist, album, genre and file path.
 
+The **Tags** view lists artists and genres with song counts. Select one to browse its songs, add a new name, or rename it. Renaming to an existing name merges the tags. For a typo-prone merge source, type part of the name, select the correct fuzzy-match suggestion, and confirm the merge. The app writes each affected audio file before updating the catalog; unavailable or changed files remain under the source tag and appear as individual failures. Rescan and retry after resolving them.
+
 The catalog is a new SQLite database under Electron's per-user `userData` directory, named `music-catalog.db`. Its versioned baseline is [data/music/001_initial.sql](data/music/001_initial.sql). The app never moves source audio or imports the old `music-24` JSON database. Do not apply the old Minion schema to a music collection.
 
 ## Development
@@ -31,6 +33,7 @@ The SQLite integration tests use Node's experimental `node:sqlite` API. The prod
 - [src/main/musicMain.ts](src/main/musicMain.ts) owns the window, user-data SQLite database, trusted IPC and validated file edits.
 - [src/main/musicCatalog.ts](src/main/musicCatalog.ts) stores the searchable catalog; [src/main/musicScanner.ts](src/main/musicScanner.ts) indexes selected folders and keeps missing-file records.
 - [src/main/musicTags.ts](src/main/musicTags.ts) reads and writes embedded tags using `node-taglib-sharp`, with reread verification before the catalog is updated.
+- [src/main/musicTagManager.ts](src/main/musicTagManager.ts) applies artist and genre renames/merges through validated file writes and preserves unsuccessful source associations.
 - [src/main/musicPreload.ts](src/main/musicPreload.ts) exposes only the methods in [src/constants/musicIpc.ts](src/constants/musicIpc.ts) to [src/renderer/MusicApp.tsx](src/renderer/MusicApp.tsx).
 
 The linked npm `mutagen` package was not used: it is an obsolete wrapper around an external Python installation. The JavaScript metadata library was selected instead. Playlists (editable queues), playback and export/copy are planned but not implemented. Scans yield between files but still parse metadata on the main process; a worker is needed before large-library responsiveness can be claimed.

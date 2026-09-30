@@ -9,9 +9,14 @@ import {
 } from 'electron';
 import Database from 'better-sqlite3';
 import { MUSIC_CHANNELS, MusicResult } from '../constants/musicIpc';
-import { createMusicCatalog, initializeMusicCatalog } from './musicCatalog';
+import {
+  createMusicCatalog,
+  initializeMusicCatalog,
+  TagKind,
+} from './musicCatalog';
 import { scanMusicRoot } from './musicScanner';
-import { MusicTagEdit, writeMusicTags } from './musicTags';
+import { createMusicTagManager } from './musicTagManager';
+import { MusicTagEdit } from './musicTags';
 import { resolveHtmlPath } from './util';
 
 let mainWindow: BrowserWindow | null = null;
@@ -19,6 +24,16 @@ let activeScan: AbortController | null = null;
 
 function validId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
+}
+
+function validKind(value: unknown): value is TagKind {
+  return value === 'artist' || value === 'genre';
+}
+
+function validTagName(value: unknown): value is string {
+  return (
+    typeof value === 'string' && !!value.trim() && value.trim().length <= 200
+  );
 }
 
 function validateEdit(input: unknown): MusicTagEdit {
@@ -70,6 +85,9 @@ app
       initializeMusicCatalog(database, fs.readFileSync(schemaPath, 'utf8'));
     } catch (error) {
       database.close();
+      process.stderr.write(
+        `Music catalog startup failed: ${error instanceof Error ? error.message : String(error)}\n`,
+      );
       dialog.showErrorBox(
         'Cannot open music catalog',
         error instanceof Error ? error.message : String(error),
@@ -78,6 +96,7 @@ app
       return undefined;
     }
     const catalog = createMusicCatalog(database);
+    const tagManager = createMusicTagManager(catalog);
     app.on('before-quit', () => {
       activeScan?.abort();
       database.close();
@@ -163,40 +182,37 @@ app
     handle(MUSIC_CHANNELS.EDIT, (id, input) => {
       if (!validId(id)) throw new Error('Invalid track ID.');
       const changes = validateEdit(input);
-      const track = catalog.detail(id);
-      if (!track || track.status !== 'present')
-        throw new Error('Track is unavailable.');
-      const root = catalog
-        .roots()
-        .find(({ id: rootId }) => rootId === track.source_id);
-      if (!root) throw new Error('Source root is unavailable.');
-      const actualPath = fs.realpathSync(track.path);
-      const relative = path.relative(root.root_path, actualPath);
+      return tagManager.saveTrack(id, changes);
+    });
+    handle(MUSIC_CHANNELS.TAGS, (kind) => {
+      if (!validKind(kind)) throw new Error('Invalid tag kind.');
+      return catalog.tags(kind);
+    });
+    handle(MUSIC_CHANNELS.TAG_SONGS, (kind, id, limit, offset) => {
       if (
-        !relative ||
-        relative === '..' ||
-        relative.startsWith(`..${path.sep}`) ||
-        path.isAbsolute(relative)
-      ) {
-        throw new Error('Track is outside its source root.');
-      }
-      const before = fs.statSync(actualPath);
+        !validKind(kind) ||
+        !validId(id) ||
+        typeof limit !== 'number' ||
+        typeof offset !== 'number'
+      )
+        throw new Error('Invalid tag song request.');
+      return catalog.tagSongs(kind, id, limit, offset);
+    });
+    handle(MUSIC_CHANNELS.ADD_TAG, (kind, name) => {
+      if (!validKind(kind) || !validTagName(name))
+        throw new Error('Invalid tag name.');
+      return catalog.addTag(kind, name);
+    });
+    handle(MUSIC_CHANNELS.MOVE_TAG, (kind, sourceId, destinationName) => {
       if (
-        before.size !== track.size_bytes ||
-        before.mtimeMs !== track.mtime_ms
+        !validKind(kind) ||
+        !validId(sourceId) ||
+        !validTagName(destinationName)
       ) {
-        throw new Error('Track changed on disk. Rescan before editing.');
+        throw new Error('Invalid tag change.');
       }
-      const saved = writeMusicTags(actualPath, changes);
-      const after = fs.statSync(actualPath);
-      catalog.upsertTrack({
-        sourceId: track.source_id,
-        filePath: track.path,
-        sizeBytes: after.size,
-        mtimeMs: after.mtimeMs,
-        tags: saved,
-      });
-      return catalog.detail(id)!;
+      if (activeScan) throw new Error('Finish the scan before editing tags.');
+      return tagManager.move(kind, sourceId, destinationName);
     });
 
     mainWindow = new BrowserWindow({
@@ -218,6 +234,9 @@ app
     return undefined;
   })
   .catch((error) => {
+    process.stderr.write(
+      `Music window startup failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
     dialog.showErrorBox(
       'Cannot start music collection',
       error instanceof Error ? error.message : String(error),
