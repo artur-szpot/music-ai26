@@ -160,4 +160,73 @@ describe('music catalog', () => {
     ]);
     expect(() => catalog.search('', 1000)).toThrow('Invalid search');
   });
+
+  it('lists artist and genre tags and pages through their linked songs', () => {
+    const catalog = initialize();
+    const root = path.resolve('music');
+    const sourceId = catalog.addRoot(root);
+    catalog.upsertTrack({
+      sourceId,
+      filePath: path.join(root, 'one.mp3'),
+      sizeBytes: 10,
+      mtimeMs: 1,
+      tags: {
+        ...tags,
+        artists: ['Singer', 'Producer', 'Singer'],
+        genres: ['Dance'],
+      },
+    });
+    catalog.upsertTrack({
+      sourceId,
+      filePath: path.join(root, 'two.flac'),
+      sizeBytes: 20,
+      mtimeMs: 2,
+      tags: {
+        ...tags,
+        title: 'Second title',
+        artists: ['Singer'],
+        genres: ['Dance'],
+      },
+    });
+    const singer = catalog.tags('artist').find(({ name }) => name === 'Singer');
+    const dance = catalog.tags('genre').find(({ name }) => name === 'Dance');
+    expect(singer).toMatchObject({ track_count: 2 });
+    expect(dance).toMatchObject({ track_count: 2 });
+    expect(catalog.tagSongs('artist', singer!.id, 1, 1)).toMatchObject({
+      total: 2,
+      rows: [{ title: 'Second title' }],
+    });
+    expect(catalog.tagSongs('genre', dance!.id).total).toBe(2);
+    expect(catalog.tagTrackIds('artist', singer!.id)).toHaveLength(2);
+    expect(() => catalog.tagSongs('genre', dance!.id, 200)).toThrow(
+      'Invalid tag song',
+    );
+  });
+
+  it('creates empty tags and guards rename and removal while songs are linked', () => {
+    const catalog = initialize();
+    const artist = catalog.addTag('artist', '  Singer  ');
+    const genre = catalog.addTag('genre', 'Downtempo');
+    expect(artist.name).toBe('Singer');
+    expect(catalog.tags('genre')).toContainEqual({ ...genre, track_count: 0 });
+    expect(() => catalog.addTag('artist', 'singer')).toThrow('already exists');
+    catalog.renameEmptyTag('artist', artist.id, 'Vocalist');
+    expect(catalog.tag('artist', artist.id)?.name).toBe('Vocalist');
+
+    const root = path.resolve('music');
+    const sourceId = catalog.addRoot(root);
+    catalog.upsertTrack({
+      sourceId,
+      filePath: path.join(root, 'song.mp3'),
+      sizeBytes: 10,
+      mtimeMs: 1,
+      tags: { ...tags, artists: ['Vocalist'], genres: ['Downtempo'] },
+    });
+    expect(catalog.tagTrackIds('artist', artist.id)).toHaveLength(1);
+    expect(() => catalog.renameEmptyTag('artist', artist.id, 'Other')).toThrow(
+      'still has songs',
+    );
+    expect(catalog.removeEmptyTag('genre', genre.id)).toBe(false);
+    expect(catalog.removeEmptyTag('artist', artist.id)).toBe(false);
+  });
 });

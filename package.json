@@ -113,6 +113,7 @@
     "electron-debug": "^4.1.0",
     "electron-log": "^5.3.2",
     "electron-updater": "^6.3.9",
+    "fuse.js": "^7.5.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0"
@@ -242,7 +243,13 @@
     },
     "extraResources": [
       "./assets/**",
-      { "from": "data/music", "to": "data/music", "filter": ["**/*"] }
+      {
+        "from": "data/music",
+        "to": "data/music",
+        "filter": [
+          "**/*"
+        ]
+      }
     ]
   },
   "collective": {

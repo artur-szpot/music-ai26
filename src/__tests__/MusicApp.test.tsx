@@ -11,6 +11,10 @@ describe('music collection window', () => {
     search: jest.fn(),
     detail: jest.fn(),
     edit: jest.fn(),
+    tags: jest.fn(),
+    tagSongs: jest.fn(),
+    addTag: jest.fn(),
+    moveTag: jest.fn(),
   };
 
   beforeEach(() => {

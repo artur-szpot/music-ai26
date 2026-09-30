@@ -31,6 +31,14 @@ export type TrackDetail = TrackSummary & {
   genres: string[];
 };
 
+export type TagKind = 'artist' | 'genre';
+
+export type CatalogTag = {
+  id: number;
+  name: string;
+  track_count: number;
+};
+
 export function initializeMusicCatalog(
   database: CatalogDatabase,
   schema: string,
@@ -139,8 +147,139 @@ export function createMusicCatalog(database: CatalogDatabase) {
       tracks.duration_ms, tracks.status FROM tracks ${searchWhere}
     ORDER BY tracks.title COLLATE NOCASE, tracks.id LIMIT ? OFFSET ?
   `);
+  const tagQueries = {
+    artist: {
+      get: database.prepare('SELECT id, name FROM artists WHERE id = ?'),
+      byName: database.prepare('SELECT id, name FROM artists WHERE name = ?'),
+      insert: database.prepare('INSERT INTO artists (name) VALUES (?)'),
+      rename: database.prepare('UPDATE artists SET name = ? WHERE id = ?'),
+      remove: database.prepare('DELETE FROM artists WHERE id = ?'),
+      trackIds: database.prepare(
+        'SELECT DISTINCT track_id AS id FROM track_artists WHERE artist_id = ? ORDER BY track_id',
+      ),
+      list: database.prepare(`
+        SELECT a.id, a.name, count(DISTINCT ta.track_id) AS track_count FROM artists a
+        LEFT JOIN track_artists ta ON ta.artist_id = a.id
+        GROUP BY a.id ORDER BY a.name COLLATE NOCASE, a.id
+      `),
+      count: database.prepare(
+        'SELECT count(DISTINCT track_id) AS total FROM track_artists WHERE artist_id = ?',
+      ),
+      songs: database.prepare(`
+        SELECT DISTINCT t.id, t.path, t.title, t.album, t.duration_ms, t.status
+        FROM tracks t JOIN track_artists ta ON ta.track_id = t.id
+        WHERE ta.artist_id = ? ORDER BY t.title COLLATE NOCASE, t.id LIMIT ? OFFSET ?
+      `),
+    },
+    genre: {
+      get: database.prepare('SELECT id, name FROM genres WHERE id = ?'),
+      byName: database.prepare('SELECT id, name FROM genres WHERE name = ?'),
+      insert: database.prepare('INSERT INTO genres (name) VALUES (?)'),
+      rename: database.prepare('UPDATE genres SET name = ? WHERE id = ?'),
+      remove: database.prepare('DELETE FROM genres WHERE id = ?'),
+      trackIds: database.prepare(
+        'SELECT track_id AS id FROM track_genres WHERE genre_id = ? ORDER BY track_id',
+      ),
+      list: database.prepare(`
+        SELECT g.id, g.name, count(tg.track_id) AS track_count FROM genres g
+        LEFT JOIN track_genres tg ON tg.genre_id = g.id
+        GROUP BY g.id ORDER BY g.name COLLATE NOCASE, g.id
+      `),
+      count: database.prepare(
+        'SELECT count(*) AS total FROM track_genres WHERE genre_id = ?',
+      ),
+      songs: database.prepare(`
+        SELECT t.id, t.path, t.title, t.album, t.duration_ms, t.status
+        FROM tracks t JOIN track_genres tg ON tg.track_id = t.id
+        WHERE tg.genre_id = ? ORDER BY t.title COLLATE NOCASE, t.id LIMIT ? OFFSET ?
+      `),
+    },
+  };
 
   return {
+    tag(kind: TagKind, id: number): { id: number; name: string } | undefined {
+      if (kind !== 'artist' && kind !== 'genre')
+        throw new Error('Invalid tag kind.');
+      return tagQueries[kind].get.get(id) as
+        | { id: number; name: string }
+        | undefined;
+    },
+    addTag(kind: TagKind, name: string): { id: number; name: string } {
+      if (
+        (kind !== 'artist' && kind !== 'genre') ||
+        typeof name !== 'string' ||
+        !name.trim() ||
+        name.trim().length > 200
+      ) {
+        throw new Error('Invalid tag name.');
+      }
+      const normalized = name.trim();
+      const query = tagQueries[kind];
+      if (query.byName.get(normalized)) throw new Error('Tag already exists.');
+      const inserted = query.insert.run(normalized);
+      return { id: Number(inserted.lastInsertRowid), name: normalized };
+    },
+    renameEmptyTag(kind: TagKind, id: number, name: string): void {
+      if (this.tagSongs(kind, id).total !== 0)
+        throw new Error('Tag still has songs.');
+      if (!this.tag(kind, id)) throw new Error('Tag not found.');
+      if (
+        typeof name !== 'string' ||
+        !name.trim() ||
+        name.trim().length > 200
+      ) {
+        throw new Error('Invalid tag name.');
+      }
+      const normalized = name.trim();
+      const existing = tagQueries[kind].byName.get(normalized) as
+        | { id: number }
+        | undefined;
+      if (existing && existing.id !== id)
+        throw new Error('Tag already exists.');
+      tagQueries[kind].rename.run(normalized, id);
+    },
+    tagTrackIds(kind: TagKind, id: number): number[] {
+      if (!this.tag(kind, id)) throw new Error('Tag not found.');
+      return (tagQueries[kind].trackIds.all(id) as { id: number }[]).map(
+        ({ id: trackIdValue }) => trackIdValue,
+      );
+    },
+    removeEmptyTag(kind: TagKind, id: number): boolean {
+      if (this.tagSongs(kind, id).total !== 0) return false;
+      return tagQueries[kind].remove.run(id).changes > 0;
+    },
+    tags(kind: TagKind): CatalogTag[] {
+      if (kind !== 'artist' && kind !== 'genre')
+        throw new Error('Invalid tag kind.');
+      return tagQueries[kind].list.all() as CatalogTag[];
+    },
+    tagSongs(
+      kind: TagKind,
+      id: number,
+      limit = 40,
+      offset = 0,
+    ): {
+      total: number;
+      rows: TrackSummary[];
+    } {
+      if (
+        (kind !== 'artist' && kind !== 'genre') ||
+        !Number.isSafeInteger(id) ||
+        id < 1 ||
+        !Number.isInteger(limit) ||
+        limit < 1 ||
+        limit > 100 ||
+        !Number.isInteger(offset) ||
+        offset < 0
+      ) {
+        throw new Error('Invalid tag song request.');
+      }
+      const query = tagQueries[kind];
+      return {
+        total: (query.count.get(id) as { total: number }).total,
+        rows: query.songs.all(id, limit, offset) as TrackSummary[],
+      };
+    },
     roots(): { id: number; root_path: string }[] {
       return getSources.all() as { id: number; root_path: string }[];
     },

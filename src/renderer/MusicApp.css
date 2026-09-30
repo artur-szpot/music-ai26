@@ -53,6 +53,29 @@ button:disabled {
 .music-brand svg {
   color: #e9b76e;
 }
+.music-navigation {
+  display: grid;
+  gap: 3px;
+  padding: 12px 9px;
+  border-bottom: 1px solid #436164;
+}
+.music-navigation button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 39px;
+  padding: 7px 12px;
+  color: #dbeae6;
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  text-align: left;
+}
+.music-navigation button.active,
+.music-navigation button:hover {
+  color: #fff;
+  background: #416264;
+}
 .music-sidebar-section {
   padding: 24px 14px;
   display: grid;
@@ -341,6 +364,295 @@ button:disabled {
   color: #9cb6ae;
 }
 
+.tag-manager {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.tag-kinds {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: #edf3f0;
+  border: 1px solid #d3dfdc;
+  border-radius: 3px;
+}
+.tag-kinds button {
+  padding: 6px 13px;
+  color: #526968;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+  font-size: 13px;
+}
+.tag-kinds button.active {
+  color: #174f47;
+  background: #fff;
+  box-shadow: 0 1px 3px #acbcb6;
+}
+.tag-failures {
+  max-height: 120px;
+  padding: 8px 28px;
+  overflow: auto;
+  color: #8d3a27;
+  background: #fff0e8;
+  font-size: 12px;
+}
+.tag-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 28px;
+  color: #273238;
+  background: #fff0d6;
+  border-bottom: 1px solid #e5c387;
+  font-size: 13px;
+}
+.tag-confirm span {
+  flex: 1;
+  min-width: 180px;
+}
+.tag-confirm button {
+  padding: 6px 10px;
+  border: 1px solid #bb9972;
+  border-radius: 3px;
+  background: #fff;
+  color: #273238;
+}
+.tag-confirm .tag-confirm-action {
+  color: #fff;
+  border-color: #157c70;
+  background: #157c70;
+}
+.tag-layout {
+  display: grid;
+  grid-template-columns: minmax(175px, 220px) minmax(180px, 1fr) minmax(
+      230px,
+      280px
+    );
+  flex: 1;
+  min-height: 0;
+}
+.tag-directory,
+.tag-songs,
+.tag-actions {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.tag-directory {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #dce4e1;
+  background: #fafbfa;
+}
+.tag-filter {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 14px 10px 8px;
+  padding: 6px 8px;
+  color: #66817d;
+  border: 1px solid #d3dfdc;
+  background: #fff;
+  border-radius: 3px;
+}
+.tag-filter input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  font-size: 13px;
+}
+.tag-directory-list {
+  flex: 1;
+  overflow: auto;
+}
+.tag-row,
+.tag-song-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 41px;
+  padding: 7px 14px;
+  color: #273238;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid #e5ebe8;
+  text-align: left;
+  font-size: 13px;
+}
+.tag-row span,
+.tag-song-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-row small,
+.tag-song-row small {
+  flex: 0 0 auto;
+  color: #738985;
+  font-size: 11px;
+}
+.tag-row:hover,
+.tag-song-row:hover {
+  background: #eaf1ee;
+}
+.tag-row.selected {
+  background: #d8ede6;
+  box-shadow: inset 3px 0 #158578;
+}
+.tag-add {
+  display: grid;
+  gap: 8px;
+  padding: 14px 10px;
+  border-top: 1px solid #dce4e1;
+  color: #5d7172;
+  font-size: 12px;
+}
+.tag-inline {
+  display: flex;
+  gap: 6px;
+}
+.tag-inline input {
+  min-width: 0;
+  flex: 1;
+}
+.tag-inline button {
+  display: grid;
+  place-items: center;
+  width: 35px;
+  flex: 0 0 35px;
+  color: #fff;
+  background: #157c70;
+  border: 0;
+  border-radius: 3px;
+}
+.tag-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  padding: 19px 18px;
+  border-bottom: 1px solid #dce4e1;
+}
+.tag-section-heading h2,
+.tag-actions h2 {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.tag-section-heading span {
+  color: #708783;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.tag-songs {
+  display: flex;
+  flex-direction: column;
+}
+.tag-songs .music-pagination {
+  margin-top: auto;
+}
+.tag-song-row small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag-song-row span small {
+  margin-left: 8px;
+  color: #b55d36;
+}
+.tag-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 18px;
+  border-left: 1px solid #dce4e1;
+  background: #fff;
+}
+.tag-actions label {
+  color: #5d7172;
+  font-size: 12px;
+  font-weight: 500;
+}
+.tag-actions input,
+.tag-inline input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 9px;
+  border: 1px solid #cbd8d3;
+  border-radius: 3px;
+  background: #fbfcfb;
+  color: #273238;
+  font-size: 13px;
+}
+.tag-actions input:focus,
+.tag-inline input:focus {
+  outline: 2px solid #99ccbc;
+  border-color: #328f7b;
+}
+.tag-merge {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #dce4e1;
+}
+.tag-suggestions {
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #cbd8d3;
+  border-radius: 3px;
+}
+.tag-suggestions button {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px;
+  color: #273238;
+  background: #fff;
+  border: 0;
+  text-align: left;
+  font-size: 12px;
+}
+.tag-suggestions button:hover,
+.tag-suggestions button[aria-selected='true'] {
+  background: #d8ede6;
+}
+.tag-suggestions small {
+  color: #708783;
+  white-space: nowrap;
+}
+.tag-source-confirmation {
+  margin: 0;
+  font-size: 12px;
+  color: #215d54;
+}
+
+@media (max-width: 1100px) {
+  .tag-layout {
+    grid-template-columns: 190px minmax(0, 1fr);
+    grid-template-rows: minmax(180px, 1fr) minmax(220px, auto);
+  }
+  .tag-directory {
+    grid-row: 1 / 3;
+  }
+  .tag-actions {
+    grid-column: 2;
+    border-top: 1px solid #dce4e1;
+    border-left: 0;
+    max-height: 48vh;
+  }
+}
+
 @media (max-width: 900px) {
   .music-sidebar {
     width: 162px;
@@ -379,6 +691,13 @@ button:disabled {
   .music-brand {
     height: 48px;
   }
+  .music-navigation {
+    display: flex;
+    padding: 4px 8px;
+  }
+  .music-navigation button {
+    min-height: 35px;
+  }
   .music-sidebar-section {
     padding: 8px;
     display: flex;
@@ -411,5 +730,21 @@ button:disabled {
     min-height: 280px;
     border-top: 1px solid #dce4e1;
     border-left: 0;
+  }
+  .tag-manager {
+    overflow: auto;
+  }
+  .tag-layout {
+    display: block;
+    overflow: auto;
+  }
+  .tag-directory {
+    max-height: 250px;
+  }
+  .tag-songs {
+    min-height: 200px;
+  }
+  .tag-actions {
+    max-height: none;
   }
 }

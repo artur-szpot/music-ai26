@@ -10,6 +10,18 @@ const musicBridge: MusicBridge = {
     ipcRenderer.invoke(MUSIC_CHANNELS.SEARCH, text, limit, offset),
   detail: (id) => ipcRenderer.invoke(MUSIC_CHANNELS.DETAIL, id),
   edit: (id, changes) => ipcRenderer.invoke(MUSIC_CHANNELS.EDIT, id, changes),
+  tags: (kind) => ipcRenderer.invoke(MUSIC_CHANNELS.TAGS, kind),
+  tagSongs: (kind, id, limit, offset) =>
+    ipcRenderer.invoke(MUSIC_CHANNELS.TAG_SONGS, kind, id, limit, offset),
+  addTag: (kind, name) =>
+    ipcRenderer.invoke(MUSIC_CHANNELS.ADD_TAG, kind, name),
+  moveTag: (kind, sourceId, destinationName) =>
+    ipcRenderer.invoke(
+      MUSIC_CHANNELS.MOVE_TAG,
+      kind,
+      sourceId,
+      destinationName,
+    ),
 };
 
 contextBridge.exposeInMainWorld('music', musicBridge);
