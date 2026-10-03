@@ -15,7 +15,7 @@ npm install
 npm start
 ```
 
-The renderer development server normally uses port 666. It is the renderer portion of the Electron app; open the Electron window to use filesystem features. `npm run build` builds the main, preload and renderer. `npm run package` packages for the current platform. On Windows, electron-builder may require Developer Mode or symlink privileges to unpack its code-signing tools even for an unsigned installer.
+The renderer development server normally uses port 60606. It is the renderer portion of the Electron app; open the Electron window to use filesystem features. `npm run build` builds the main, preload and renderer. `npm run package` packages for the current platform. On Windows, electron-builder may require Developer Mode or symlink privileges to unpack its code-signing tools even for an unsigned installer.
 
 Validation:
 
