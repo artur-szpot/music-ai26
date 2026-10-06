@@ -29,6 +29,7 @@ describe('file-backed tag management', () => {
     year: 2024,
     track: 1,
     durationMs: 1000,
+    rating: 7,
   };
 
   beforeEach(() => {

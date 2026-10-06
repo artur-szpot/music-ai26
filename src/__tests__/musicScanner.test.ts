@@ -35,6 +35,7 @@ describe('music folder scanning', () => {
       year: 2024,
       track: 1,
       durationMs: 1000,
+      rating: 7,
     });
   });
 
@@ -87,5 +88,35 @@ describe('music folder scanning', () => {
     expect(catalog.search('Sample').rows).toMatchObject([
       { status: 'present' },
     ]);
+  });
+
+  it('rereads title, artists and rating on an explicit rescan of unchanged files', async () => {
+    const catalog = createMusicCatalog(
+      database as unknown as Parameters<typeof createMusicCatalog>[0],
+    );
+    fs.writeFileSync(path.join(root, 'song.mp3'), 'test audio');
+    await scanMusicRoot(catalog, root);
+    const { id } = catalog.search('Sample').rows[0];
+    expect(catalog.detail(id)).toMatchObject({
+      title: 'Sample',
+      artists: ['Artist'],
+      rating: 7,
+    });
+    readTags.mockReturnValue({
+      ...readTags.mock.results[0].value,
+      title: 'New title',
+      artists: ['New artist', 'Second artist'],
+      rating: 10,
+    });
+    expect(await scanMusicRoot(catalog, root, undefined, true)).toMatchObject({
+      addedOrUpdated: 1,
+      unchanged: 0,
+      failed: 0,
+    });
+    expect(catalog.detail(id)).toMatchObject({
+      title: 'New title',
+      artists: ['New artist', 'Second artist'],
+      rating: 10,
+    });
   });
 });

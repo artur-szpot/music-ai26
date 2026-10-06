@@ -6,6 +6,8 @@ import {
   dialog,
   ipcMain,
   IpcMainInvokeEvent,
+  net,
+  protocol,
 } from 'electron';
 import Database from 'better-sqlite3';
 import { MUSIC_CHANNELS, MusicResult } from '../constants/musicIpc';
@@ -17,10 +19,24 @@ import {
 import { scanMusicRoot } from './musicScanner';
 import { createMusicTagManager } from './musicTagManager';
 import { MusicTagEdit } from './musicTags';
+import { createMusicPlayback } from './musicPlayback';
 import { resolveHtmlPath } from './util';
+import loadMusicWindow from './musicWindow';
 
 let mainWindow: BrowserWindow | null = null;
 let activeScan: AbortController | null = null;
+
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 'music-audio',
+    privileges: {
+      standard: true,
+      secure: true,
+      stream: true,
+      supportFetchAPI: true,
+    },
+  },
+]);
 
 function validId(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0;
@@ -97,8 +113,17 @@ app
     }
     const catalog = createMusicCatalog(database);
     const tagManager = createMusicTagManager(catalog);
+    const playback = createMusicPlayback(catalog, (url, request) =>
+      net.fetch(url, {
+        method: request.method,
+        headers: request.headers,
+        signal: request.signal,
+      }),
+    );
+    protocol.handle('music-audio', (request) => playback.serve(request));
     app.on('before-quit', () => {
       activeScan?.abort();
+      playback.clear();
       database.close();
     });
 
@@ -136,6 +161,10 @@ app
     };
 
     handle(MUSIC_CHANNELS.ROOTS, () => catalog.roots());
+    handle(MUSIC_CHANNELS.PLAYBACK_SOURCE, (id) => {
+      if (!validId(id)) throw new Error('Invalid track ID.');
+      return playback.source(id);
+    });
     handle(MUSIC_CHANNELS.CHOOSE_ROOT, async () => {
       if (!mainWindow) throw new Error('Window unavailable.');
       const result = await dialog.showOpenDialog(mainWindow, {
@@ -155,7 +184,12 @@ app
       const controller = new AbortController();
       activeScan = controller;
       try {
-        return await scanMusicRoot(catalog, root.root_path, controller.signal);
+        return await scanMusicRoot(
+          catalog,
+          root.root_path,
+          controller.signal,
+          true,
+        );
       } finally {
         activeScan = null;
       }
@@ -228,9 +262,10 @@ app
     });
     mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     mainWindow.on('closed', () => {
+      playback.clear();
       mainWindow = null;
     });
-    await mainWindow.loadURL(resolveHtmlPath('index.html'));
+    await loadMusicWindow(mainWindow, resolveHtmlPath('index.html'));
     return undefined;
   })
   .catch((error) => {

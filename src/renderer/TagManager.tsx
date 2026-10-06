@@ -6,20 +6,23 @@ import EditIcon from '@mui/icons-material/Edit';
 import SearchIcon from '@mui/icons-material/Search';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import type { CatalogTag, TagKind, TrackSummary } from '../main/musicCatalog';
+import type { CatalogTag, TrackSummary } from '../main/musicCatalog';
+import TrackRow from './TrackRow';
 
 const pageSize = 40;
 
 type TagManagerProps = {
   onTrackOpen: (id: number) => void;
   onChanged: () => void;
+  onTrackPlay: (track: TrackSummary) => void;
 };
 
 export default function TagManager({
   onTrackOpen,
   onChanged,
+  onTrackPlay,
 }: TagManagerProps) {
-  const [kind, setKind] = useState<TagKind>('artist');
+  const kind = 'genre';
   const [tags, setTags] = useState<CatalogTag[]>([]);
   const [tagSearch, setTagSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -31,6 +34,8 @@ export default function TagManager({
   const [renameTo, setRenameTo] = useState('');
   const [sourceText, setSourceText] = useState('');
   const [sourceId, setSourceId] = useState<number | null>(null);
+  const [destinationText, setDestinationText] = useState('');
+  const [destinationId, setDestinationId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [songsLoading, setSongsLoading] = useState(false);
@@ -46,6 +51,7 @@ export default function TagManager({
 
   const selected = tags.find(({ id }) => id === selectedId);
   const source = tags.find(({ id }) => id === sourceId);
+  const destinationTag = tags.find(({ id }) => id === destinationId);
   const fuzzy = new Fuse(tags, {
     keys: ['name'],
     threshold: 0.45,
@@ -54,12 +60,16 @@ export default function TagManager({
   const visibleTags = tagSearch.trim()
     ? fuzzy.search(tagSearch.trim(), { limit: 80 }).map(({ item }) => item)
     : tags;
-  const sourceSuggestions = sourceText.trim()
-    ? fuzzy
-        .search(sourceText.trim(), { limit: 6 })
-        .map(({ item }) => item)
-        .filter(({ id }) => id !== selectedId)
-    : [];
+  const mergeSuggestions = (text: string) =>
+    text.trim()
+      ? fuzzy
+          .search(text.trim())
+          .map(({ item }) => item)
+          .filter(({ id }) => id !== selectedId)
+          .slice(0, 6)
+      : [];
+  const sourceSuggestions = mergeSuggestions(sourceText);
+  const destinationSuggestions = mergeSuggestions(destinationText);
 
   useEffect(() => {
     let active = true;
@@ -116,20 +126,6 @@ export default function TagManager({
     };
   }, [kind, selectedId, page, revision]);
 
-  const changeKind = (value: TagKind) => {
-    setKind(value);
-    setSelectedId(null);
-    setSourceId(null);
-    setSourceText('');
-    setRenameTo('');
-    setTagSearch('');
-    setPage(0);
-    setError('');
-    setMessage('');
-    setFailures([]);
-    setPendingMerge(null);
-  };
-
   const addTag = async () => {
     if (!newTagName.trim()) return;
     setBusy(true);
@@ -140,6 +136,8 @@ export default function TagManager({
       setSelectedId(result.data.id);
       setPage(0);
       setNewTagName('');
+      setDestinationText('');
+      setDestinationId(null);
       setMessage(`${result.data.name} added.`);
       setRevision((value) => value + 1);
       onChanged();
@@ -163,12 +161,19 @@ export default function TagManager({
     try {
       const result = await window.music.moveTag(kind, from.id, destination);
       if (!result.ok) throw new Error(result.error.message);
-      const { destinationId, updated, remaining, errors } = result.data;
-      setSelectedId(destinationId);
+      const {
+        destinationId: mergedId,
+        updated,
+        remaining,
+        errors,
+      } = result.data;
+      setSelectedId(mergedId);
       setPage(0);
       setRenameTo('');
       setSourceText('');
       setSourceId(null);
+      setDestinationText('');
+      setDestinationId(null);
       setFailures(errors);
       setMessage(
         remaining
@@ -205,24 +210,6 @@ export default function TagManager({
     <main className="tag-manager">
       <header className="music-toolbar">
         <h1>Tags</h1>
-        <div className="tag-kinds" role="group" aria-label="Tag kind">
-          <button
-            type="button"
-            className={kind === 'artist' ? 'active' : ''}
-            aria-pressed={kind === 'artist'}
-            onClick={() => changeKind('artist')}
-          >
-            Artists
-          </button>
-          <button
-            type="button"
-            className={kind === 'genre' ? 'active' : ''}
-            aria-pressed={kind === 'genre'}
-            onClick={() => changeKind('genre')}
-          >
-            Genres
-          </button>
-        </div>
       </header>
       {(message || error) && (
         <div
@@ -267,10 +254,7 @@ export default function TagManager({
         </div>
       )}
       <div className="tag-layout">
-        <section
-          className="tag-directory"
-          aria-label={`${kind === 'artist' ? 'Artist' : 'Genre'} tags`}
-        >
+        <section className="tag-directory" aria-label="Genre tags">
           <label className="tag-filter" htmlFor="tag-filter">
             <SearchIcon fontSize="small" />
             <input
@@ -292,11 +276,14 @@ export default function TagManager({
                   type="button"
                   key={tag.id}
                   className={`tag-row${selectedId === tag.id ? ' selected' : ''}`}
+                  disabled={busy}
                   onClick={() => {
                     setSelectedId(tag.id);
                     setPage(0);
                     setRenameTo('');
                     setSourceId(null);
+                    setDestinationId(null);
+                    setDestinationText('');
                     setPendingMerge(null);
                   }}
                 >
@@ -341,18 +328,13 @@ export default function TagManager({
           )}
           {!songsLoading &&
             songs.map((song) => (
-              <button
-                type="button"
-                className="tag-song-row"
+              <TrackRow
                 key={song.id}
-                onClick={() => onTrackOpen(song.id)}
-              >
-                <span>
-                  {song.title || song.path.split(/[\\/]/).pop()}
-                  {song.status === 'missing' && <small>Missing</small>}
-                </span>
-                <small>{song.album}</small>
-              </button>
+                track={song}
+                compact
+                onOpen={onTrackOpen}
+                onPlay={onTrackPlay}
+              />
             ))}
           {selected && total > pageSize && (
             <div className="music-pagination">
@@ -416,6 +398,64 @@ export default function TagManager({
                   ? 'Merge into existing'
                   : 'Rename'}
               </button>
+              <div className="tag-merge">
+                <h2>Merge into...</h2>
+                <label htmlFor="merge-destination">
+                  Destination tag
+                  <input
+                    id="merge-destination"
+                    value={destinationText}
+                    maxLength={200}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setDestinationText(event.target.value);
+                      setDestinationId(null);
+                    }}
+                  />
+                </label>
+                {destinationSuggestions.length > 0 && (
+                  <div
+                    className="tag-suggestions"
+                    role="listbox"
+                    aria-label="Matching destination tags"
+                  >
+                    {destinationSuggestions.map((suggestion) => (
+                      <button
+                        type="button"
+                        key={suggestion.id}
+                        role="option"
+                        aria-selected={destinationId === suggestion.id}
+                        disabled={busy}
+                        onClick={() => {
+                          setDestinationId(suggestion.id);
+                          setDestinationText(suggestion.name);
+                        }}
+                      >
+                        {suggestion.name}{' '}
+                        <small>{suggestion.track_count} songs</small>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {destinationTag && (
+                  <p className="tag-source-confirmation">
+                    Destination: {destinationTag.name}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  className="music-save"
+                  disabled={
+                    busy || !destinationTag || destinationTag.id === selected.id
+                  }
+                  onClick={() => {
+                    if (destinationTag)
+                      requestMove(selected, destinationTag.name);
+                  }}
+                >
+                  <CallMergeIcon fontSize="small" /> Merge into selected tag
+                </button>
+              </div>
               <div className="tag-merge">
                 <h2>Merge into {selected.name}</h2>
                 <label htmlFor="merge-source">

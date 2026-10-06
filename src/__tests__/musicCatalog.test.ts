@@ -22,6 +22,7 @@ describe('music catalog', () => {
     year: 2024,
     track: 1,
     durationMs: 90000,
+    rating: 7,
   };
 
   beforeEach(() => {
@@ -48,8 +49,60 @@ describe('music catalog', () => {
       schema,
     );
     expect(database.prepare('PRAGMA user_version').get()).toMatchObject({
-      user_version: 1,
+      user_version: 2,
     });
+  });
+
+  it.each<[string, Partial<MusicTags>, 0 | 1]>([
+    ['complete tags', {}, 0],
+    ['no artists', { artists: [] }, 1],
+    ['no title', { title: '' }, 1],
+    ['whitespace title', { title: ' \t\r\n ' }, 1],
+    ['no genres', { genres: [] }, 1],
+    ['no rating', { rating: null }, 1],
+    ['zero rating', { rating: 0 }, 0],
+    [
+      'multiple missing tags',
+      { artists: [], title: '', genres: [], rating: null },
+      1,
+    ],
+    ['hidden fields absent', { album: '', year: 0, track: 0 }, 0],
+  ])('flags %s consistently in track lists', (_name, changes, expected) => {
+    const catalog = initialize();
+    const rootPath = path.resolve('music');
+    const sourceId = catalog.addRoot(rootPath);
+    const id = catalog.upsertTrack({
+      sourceId,
+      filePath: path.join(rootPath, 'song.mp3'),
+      sizeBytes: 100,
+      mtimeMs: 1,
+      tags: { ...tags, ...changes },
+    });
+    expect(catalog.search('').rows[0].metadata_incomplete).toBe(expected);
+    expect(catalog.detail(id)?.metadata_incomplete).toBe(expected);
+    catalog.tags('artist').forEach((artist) => {
+      expect(
+        catalog.tagSongs('artist', artist.id).rows[0].metadata_incomplete,
+      ).toBe(expected);
+    });
+    catalog.tags('genre').forEach((genre) => {
+      expect(
+        catalog.tagSongs('genre', genre.id).rows[0].metadata_incomplete,
+      ).toBe(expected);
+    });
+    catalog.markAbsent(sourceId, new Set());
+    expect(catalog.search('').rows[0]).toMatchObject({
+      status: 'missing',
+      metadata_incomplete: expected,
+    });
+    catalog.upsertTrack({
+      sourceId,
+      filePath: path.join(rootPath, 'song.mp3'),
+      sizeBytes: 100,
+      mtimeMs: 2,
+      tags,
+    });
+    expect(catalog.search('').rows[0].metadata_incomplete).toBe(0);
   });
 
   it('does not apply its schema to a populated database', () => {
@@ -58,6 +111,36 @@ describe('music catalog', () => {
     expect(database.prepare('PRAGMA user_version').get()).toMatchObject({
       user_version: 0,
     });
+  });
+
+  it('upgrades a version 1 catalog without losing its tracks or tags', () => {
+    database.exec(
+      schema
+        .replace(
+          '  rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 0 AND 10),\n',
+          '',
+        )
+        .replace('PRAGMA user_version = 2', 'PRAGMA user_version = 1'),
+    );
+    database.exec(`
+        INSERT INTO sources (id, root_path) VALUES (1, 'legacy-root');
+        INSERT INTO tracks (
+          id, source_id, path, format, size_bytes, mtime_ms, title, album, duration_ms
+        ) VALUES (1, 1, 'legacy-root/song.mp3', 'mp3', 100, 1, 'Legacy', 'Album', 1000);
+        INSERT INTO artists (id, name) VALUES (1, 'Artist');
+        INSERT INTO track_artists (track_id, artist_id, position) VALUES (1, 1, 0);
+      `);
+    const catalog = initialize();
+    expect(catalog.detail(1)).toMatchObject({
+      title: 'Legacy',
+      album: 'Album',
+      artists: ['Artist'],
+      rating: null,
+    });
+    expect(database.prepare('PRAGMA user_version').get()).toMatchObject({
+      user_version: 2,
+    });
+    initialize();
   });
 
   it('upserts tags without duplicating tracks or changing their id', () => {
@@ -76,12 +159,18 @@ describe('music catalog', () => {
     expect(
       catalog.upsertTrack({
         ...scanned,
-        tags: { ...tags, title: 'Second title', artists: ['Artist B'] },
+        tags: {
+          ...tags,
+          title: 'Second title',
+          artists: ['Artist B'],
+          rating: 10,
+        },
       }),
     ).toBe(trackId);
     expect(
       database.prepare('SELECT id, title FROM tracks').all(),
     ).toMatchObject([{ id: trackId, title: 'Second title' }]);
+    expect(catalog.detail(trackId)?.rating).toBe(10);
     expect(
       database
         .prepare(

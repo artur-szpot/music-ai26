@@ -19,6 +19,8 @@ export type TrackSummary = {
   album: string;
   duration_ms: number;
   status: 'present' | 'missing';
+  metadata_incomplete: 0 | 1;
+  rating: number | null;
 };
 
 export type TrackDetail = TrackSummary & {
@@ -39,6 +41,14 @@ export type CatalogTag = {
   track_count: number;
 };
 
+const incompleteMetadata = `
+  (length(trim(tracks.title, char(9) || char(10) || char(13) || ' ')) = 0
+    OR tracks.rating IS NULL
+    OR NOT EXISTS (SELECT 1 FROM track_artists WHERE track_id = tracks.id)
+    OR NOT EXISTS (SELECT 1 FROM track_genres WHERE track_id = tracks.id))
+  AS metadata_incomplete
+`;
+
 export function initializeMusicCatalog(
   database: CatalogDatabase,
   schema: string,
@@ -52,7 +62,7 @@ export function initializeMusicCatalog(
       .get();
     if (existingTables) throw new Error('The selected database is not empty.');
     database.exec(schema);
-  } else if (version.user_version !== 1) {
+  } else if (![1, 2].includes(version.user_version)) {
     throw new Error('Unsupported music catalog version.');
   }
 
@@ -62,6 +72,20 @@ export function initializeMusicCatalog(
     )
     .get();
   if (!musicTable) throw new Error('This is not a music catalog.');
+  if (version.user_version === 1) {
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      database.exec(`
+        ALTER TABLE tracks ADD COLUMN rating INTEGER
+          CHECK (rating IS NULL OR rating BETWEEN 0 AND 10);
+        PRAGMA user_version = 2;
+      `);
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    }
+  }
   database.exec('PRAGMA foreign_keys = ON');
 }
 
@@ -81,18 +105,21 @@ export function createMusicCatalog(database: CatalogDatabase) {
   const saveTrack = database.prepare(`
     INSERT INTO tracks (
       source_id, path, format, size_bytes, mtime_ms, title, album,
-      duration_ms, year, track_number, status
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'present')
+      duration_ms, year, track_number, rating, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'present')
     ON CONFLICT(path) DO UPDATE SET
       source_id = excluded.source_id, format = excluded.format,
       size_bytes = excluded.size_bytes, mtime_ms = excluded.mtime_ms,
       title = excluded.title, album = excluded.album,
       duration_ms = excluded.duration_ms, year = excluded.year,
-      track_number = excluded.track_number, status = 'present',
+      track_number = excluded.track_number, rating = excluded.rating,
+      status = 'present',
       last_seen_at = CURRENT_TIMESTAMP
   `);
   const trackId = database.prepare('SELECT id FROM tracks WHERE path = ?');
-  const getTrack = database.prepare('SELECT * FROM tracks WHERE id = ?');
+  const getTrack = database.prepare(
+    `SELECT *, ${incompleteMetadata} FROM tracks WHERE id = ?`,
+  );
   const getArtists = database.prepare(`
     SELECT a.name FROM track_artists ta JOIN artists a ON a.id = ta.artist_id
     WHERE ta.track_id = ? ORDER BY ta.position
@@ -144,7 +171,8 @@ export function createMusicCatalog(database: CatalogDatabase) {
   );
   const searchRows = database.prepare(`
     SELECT tracks.id, tracks.path, tracks.title, tracks.album,
-      tracks.duration_ms, tracks.status FROM tracks ${searchWhere}
+      tracks.duration_ms, tracks.status, tracks.rating, ${incompleteMetadata}
+    FROM tracks ${searchWhere}
     ORDER BY tracks.title COLLATE NOCASE, tracks.id LIMIT ? OFFSET ?
   `);
   const tagQueries = {
@@ -166,9 +194,11 @@ export function createMusicCatalog(database: CatalogDatabase) {
         'SELECT count(DISTINCT track_id) AS total FROM track_artists WHERE artist_id = ?',
       ),
       songs: database.prepare(`
-        SELECT DISTINCT t.id, t.path, t.title, t.album, t.duration_ms, t.status
-        FROM tracks t JOIN track_artists ta ON ta.track_id = t.id
-        WHERE ta.artist_id = ? ORDER BY t.title COLLATE NOCASE, t.id LIMIT ? OFFSET ?
+        SELECT DISTINCT tracks.id, tracks.path, tracks.title, tracks.album,
+          tracks.duration_ms, tracks.status, tracks.rating, ${incompleteMetadata}
+        FROM tracks JOIN track_artists ta ON ta.track_id = tracks.id
+        WHERE ta.artist_id = ?
+        ORDER BY tracks.title COLLATE NOCASE, tracks.id LIMIT ? OFFSET ?
       `),
     },
     genre: {
@@ -189,9 +219,11 @@ export function createMusicCatalog(database: CatalogDatabase) {
         'SELECT count(*) AS total FROM track_genres WHERE genre_id = ?',
       ),
       songs: database.prepare(`
-        SELECT t.id, t.path, t.title, t.album, t.duration_ms, t.status
-        FROM tracks t JOIN track_genres tg ON tg.track_id = t.id
-        WHERE tg.genre_id = ? ORDER BY t.title COLLATE NOCASE, t.id LIMIT ? OFFSET ?
+        SELECT tracks.id, tracks.path, tracks.title, tracks.album,
+          tracks.duration_ms, tracks.status, tracks.rating, ${incompleteMetadata}
+        FROM tracks JOIN track_genres tg ON tg.track_id = tracks.id
+        WHERE tg.genre_id = ?
+        ORDER BY tracks.title COLLATE NOCASE, tracks.id LIMIT ? OFFSET ?
       `),
     },
   };
@@ -341,6 +373,7 @@ export function createMusicCatalog(database: CatalogDatabase) {
           tags.durationMs,
           tags.year,
           tags.track,
+          tags.rating,
         );
         const { id } = trackId.get(normalized) as { id: number };
         clearArtists.run(id);

@@ -19,6 +19,7 @@ export async function scanMusicRoot(
   catalog: ReturnType<typeof createMusicCatalog>,
   rootPath: string,
   signal?: AbortSignal,
+  rereadTags = false,
 ): Promise<ScanResult> {
   const root = await fs.realpath(rootPath);
   if (!(await fs.stat(root)).isDirectory()) {
@@ -71,6 +72,7 @@ export async function scanMusicRoot(
             seen.add(resolved);
             const stats = await fs.stat(filePath);
             if (
+              !rereadTags &&
               !catalog.needsScan(sourceId, resolved, stats.size, stats.mtimeMs)
             ) {
               result.unchanged += 1;

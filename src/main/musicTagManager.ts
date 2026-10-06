@@ -1,7 +1,7 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { createMusicCatalog, TagKind, TrackDetail } from './musicCatalog';
 import { MusicTagEdit, MusicTags, writeMusicTags } from './musicTags';
+import resolveMusicFilePath from './musicFiles';
 
 type Catalog = ReturnType<typeof createMusicCatalog>;
 
@@ -51,16 +51,7 @@ export function createMusicTagManager(
       .roots()
       .find(({ id: rootId }) => rootId === track.source_id);
     if (!root) throw new Error('Source root is unavailable.');
-    const actualPath = fs.realpathSync(track.path);
-    const relative = path.relative(root.root_path, actualPath);
-    if (
-      !relative ||
-      relative === '..' ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative)
-    ) {
-      throw new Error('Track is outside its source root.');
-    }
+    const actualPath = resolveMusicFilePath(track.path, root.root_path);
     const before = fs.statSync(actualPath);
     if (before.size !== track.size_bytes || before.mtimeMs !== track.mtime_ms) {
       throw new Error('Track changed on disk. Rescan before editing.');
