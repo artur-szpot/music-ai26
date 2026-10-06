@@ -20,6 +20,7 @@ export const MUSIC_CHANNELS = {
   TAG_SONGS: 'music:tag-songs',
   ADD_TAG: 'music:add-tag',
   MOVE_TAG: 'music:move-tag',
+  PLAYBACK_SOURCE: 'music:playback-source',
 } as const;
 
 export type MusicResult<T> =
@@ -27,6 +28,7 @@ export type MusicResult<T> =
   | { ok: false; error: { code: string; message: string } };
 
 export type MusicBridge = {
+  playbackSource(id: number): Promise<MusicResult<{ url: string }>>;
   roots(): Promise<MusicResult<{ id: number; root_path: string }[]>>;
   chooseRoot(): Promise<MusicResult<{ id: number; root_path: string } | null>>;
   scan(rootId: number): Promise<MusicResult<ScanResult>>;

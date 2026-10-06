@@ -18,6 +18,7 @@ CREATE TABLE tracks (
   duration_ms REAL NOT NULL,
   year INTEGER NOT NULL DEFAULT 0,
   track_number INTEGER NOT NULL DEFAULT 0,
+  rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 0 AND 10),
   status TEXT NOT NULL DEFAULT 'present' CHECK (status IN ('present', 'missing')),
   last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -54,5 +55,5 @@ CREATE TABLE track_genres (
 
 CREATE INDEX track_genres_genre ON track_genres(genre_id);
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 COMMIT;
